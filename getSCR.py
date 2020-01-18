@@ -3,6 +3,7 @@
 @author: MD. Nazmuddoha Ansary, Sajjad Uddin Mahmud
 '''
 from __future__ import print_function
+import pssexplore34
 import psspy
 import pssarrays
 import redirect
@@ -63,24 +64,17 @@ def __summary(hv_bus_ids,gen_bus_ids,pmax,i_sym,v_kv,v_pu,scr,save_csv=True):
         df.to_csv(_csv_path)
         LOG_INFO('Saved Summary at: {}'.format(_csv_path))
 #-----------------------------------------------------------------------------------------------------------
-def getParams(case_study,hv_bus_ids,gen_bus_ids):
-    '''
-    ARGS: 
-        case_study  : path to case file (.sav) <STRING>
-        hv_bus_ids  : list of relevant high voltage buses <LIST OF INT>
-        gen_bus_ids : list of relevant generator buses <LIST OF INT>
-    RETURNS:
-        pmax        : list of max power for generator buses
-        i_sym       : list of 3 phase symmetric fault current magnitude for high voltage buses
-        v_kv        : list of base voltage in KV unit for high voltage busess
-        v_pu        : list of per unit voltage for high voltage buses
-    '''
-    # params
-    pmax=[]
-    i_sym=[]
-    v_kv=[]
-    v_pu=[]
-    # non-verbose execution
+LOG_INFO('Loading System Config ')
+config_data=readJson('config.json')
+
+CASE_STUDY=config_data['CASE_PATH']
+BUS_IDS=str(config_data['BUS_IDS']).split(',')
+BUS_IDS=[int(_id) for _id in BUS_IDS ]
+
+MACHINE_IDS=str(config_data['GEN_IDS']).split(',')
+MACHINE_IDS=[int(_id) for _id in MACHINE_IDS]
+#-----------------------------------------------------------------------------------------------------------
+def initCase():
     LOG_INFO('Initializing psspy')
     with silence():
         # initialize
@@ -88,7 +82,25 @@ def getParams(case_study,hv_bus_ids,gen_bus_ids):
     LOG_INFO('Loading Case ')
     with silence():
         # load case
-        psspy.case(case_study)
+        psspy.case(CASE_STUDY)
+
+def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
+    '''
+    ARGS: 
+        hv_bus_ids  : list of relevant high voltage buses <LIST OF INT>
+        gen_bus_ids : list of relevant generator buses <LIST OF INT>
+   RETURNS:
+        scr         : list of short circuit ratios
+    Calculation:
+        scr=sqrt(3)*i_sym*v_pu*v_kv*_UNIT_FACTOR/pmax
+        _UNIT_FACTOR=1e-3
+    '''
+    # params
+    pmax=[]
+    i_sym=[]
+    v_kv=[]
+    v_pu=[]
+    # non-verbose execution
     LOG_INFO('Solving for full newton-rafsan ')
     with silence():
         # full newton-rafsan
@@ -105,7 +117,7 @@ def getParams(case_study,hv_bus_ids,gen_bus_ids):
     # all bus pu voltage
     _, (__v_pu,) = psspy.abusreal(sid=-1, string=["PU"])
     # all bus kv voltage
-    _, (__v_kv,) = psspy.abusreal(sid=-1, string=["KV"])
+    _, (__v_kv,) = psspy.abusreal(sid=-1, string=["BASE"])
     # get pmax
     for _id in gen_bus_ids:
         _, _pmax = psspy.macdat(ibus=_id, id='1', string='PMAX') # find power of machine
@@ -116,50 +128,24 @@ def getParams(case_study,hv_bus_ids,gen_bus_ids):
         v_kv.append(__v_kv[_id-1])
         i_sym.append(all_currents.flt3ph[_id-1].ibsym.real)
     
-    return pmax,i_sym,v_kv,v_pu
-
-def calcSCR(pmax,i_sym,v_kv,v_pu):
-    '''
-    ARGS:
-        pmax        : list of max power for generator buses
-        i_sym       : list of 3 phase symmetric fault current magnitude for high voltage buses
-        v_kv        : list of base voltage in KV unit for high voltage busess
-        v_pu        : list of per unit voltage for high voltage buses
-    RETURNS:
-        scr         : list of short circuit ratios
-    Calculation:
-        scr=sqrt(3)*i_sym*v_pu*v_kv*_UNIT_FACTOR/pmax
-        _UNIT_FACTOR=1e-3
-    '''
     total_bus=len(pmax)
     scr=[]
     _UNIT_FACTOR=1e-3
     LOG_INFO('Calculating SCR')
     for idx in range(total_bus):
         scr.append(math.sqrt(3)*i_sym[idx]*v_pu[idx]*v_kv[idx]*_UNIT_FACTOR/pmax[idx])
-    return scr
-
+    
+    if ret_params:
+        return pmax,i_sym,v_kv,v_pu,scr
+    else:
+        return scr
+    
 
 #-----------------------------------------------------------------------------------------------------------
 if __name__=='__main__':
     start_time=time()
     banner()
-    LOG_INFO('Loading System Config ')
-    config_data=readJson('config.json')
-
-    CASE_STUDY=config_data['CASE_PATH']
-    BUS_IDS=str(config_data['BUS_IDS']).split(',')
-    BUS_IDS=[int(_id) for _id in BUS_IDS ]
-
-    MACHINE_IDS=str(config_data['GEN_IDS']).split(',')
-    MACHINE_IDS=[int(_id) for _id in MACHINE_IDS]
-
-    pmax,i_sym,v_kv,v_pu= getParams(case_study=CASE_STUDY,
-                                    hv_bus_ids=BUS_IDS,
-                                    gen_bus_ids=MACHINE_IDS)
-    
-    scr=calcSCR(pmax,i_sym,v_kv,v_pu)
-
+    initCase()
+    pmax,i_sym,v_kv,v_pu,scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS,ret_params=True)
     __summary(BUS_IDS,MACHINE_IDS,pmax,i_sym,v_kv,v_pu,scr,save_csv=True)
-    
     LOG_INFO('Time Taken:{}'.format(time()-start_time),pcolor='cyan')

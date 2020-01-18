@@ -2,6 +2,7 @@
 Power System Simulation with PSSE
 
         Author:MD. Nazmuddoha Ansary, Sajjad Uddin Mahmud
+        version:0.0.1
 
 # Environment
 
