@@ -1,5 +1,5 @@
 {
-    "CASE_PATH"     :"F:\\PSSE\\code\\case.sav",
+    "CASE_PATH"     :"F:\\PSSE\\code\\base_case_final.sav",
     "BUS_IDS"       :"14,15,16,20",
     "GEN_IDS"       :"30,36,32,34"  
 }

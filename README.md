@@ -56,3 +56,7 @@ Power System Simulation with PSSE
 * Example Execution results
 
 ![](/src_img/exec.PNG?raw=true)
+
+# Case Diagram
+
+![](/src_img/main.jpg?raw=true)
