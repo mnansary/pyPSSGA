@@ -1,6 +1,10 @@
 {
-    "CASE_PATH"     :"F:\\PSSE\\code\\base_case_final.sav",
+    "CASE_PATH"     :"F:\\PSSE\\code\\pyPSSGA\\base_case_final.sav",
     "BUS_IDS"       :"14,15,16,20",
     "GEN_IDS"       :"30,36,32,34",
-    "SC_IDS"        :"37,38,39,40"  
+    "SC_IDS"        :"37,38,39,40",
+    "SC_SIZE_MIN"   : 10,
+    "SC_SIZE_MAX"   : 50,
+    "STEP_SIZE"     : 5,
+    "THRESH"        : 3.00
 }
