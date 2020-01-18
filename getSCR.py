@@ -13,7 +13,10 @@ import numpy as np
 import pandas as pd
 import math
 import json
+import itertools
+import matplotlib.pyplot as plt
 from time import time
+from tqdm import tqdm 
 import contextlib
 from termcolor import colored
 os.system('color')
@@ -73,6 +76,9 @@ BUS_IDS=[int(_id) for _id in BUS_IDS ]
 
 MACHINE_IDS=str(config_data['GEN_IDS']).split(',')
 MACHINE_IDS=[int(_id) for _id in MACHINE_IDS]
+
+SC_IDS=str(config_data['SC_IDS']).split(',')
+SC_IDS=[int(_id) for _id in SC_IDS]
 #-----------------------------------------------------------------------------------------------------------
 def initCase():
     LOG_INFO('Initializing psspy')
@@ -83,6 +89,96 @@ def initCase():
     with silence():
         # load case
         psspy.case(CASE_STUDY)
+
+def modifyCase():
+    __sizes=range(10,300,10)
+    scrs=[]
+    LOG_INFO('Calculating SCR')
+    for __size in tqdm(__sizes):
+        with silence():
+            psspy.machine_data_2(i=SC_IDS[0],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,__size,0,0.09,0,0,1,1,1,1,1,1])
+        scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
+        scrs.append(scr[0])
+    
+    data = {'size':__sizes, 
+            'scr':scrs}
+    # Create DataFrame 
+    df = pd.DataFrame(data)
+    df.set_index('size',inplace=True)
+    print(df.head())
+    df.plot()
+    plt.show()
+
+def modifyCase4():
+    __sizes=range(10,60,10)
+    __iter_len=int(math.pow(len(__sizes),4)) 
+    S1s=[]
+    S2s=[]
+    S3s=[]
+    S4s=[]
+    SCR1=[]
+    SCR2=[]
+    SCR3=[]
+    SCR4=[]
+    
+    LOG_INFO('Calculating SCR')
+    for s1,s2,s3,s4 in tqdm(itertools.product(__sizes,__sizes,__sizes,__sizes),total=__iter_len):
+        
+        with silence():
+            psspy.machine_data_2(i=SC_IDS[0],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,s1,0,0.09,0,0,1,1,1,1,1,1])
+
+            psspy.machine_data_2(i=SC_IDS[1],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,s2,0,0.09,0,0,1,1,1,1,1,1])
+
+            psspy.machine_data_2(i=SC_IDS[2],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,s3,0,0.09,0,0,1,1,1,1,1,1])
+
+            psspy.machine_data_2(i=SC_IDS[3],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,s4,0,0.09,0,0,1,1,1,1,1,1])
+
+        scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
+        S1s.append(s1)
+        S2s.append(s2)
+        S3s.append(s3)
+        S4s.append(s4)
+        SCR1.append(scr[0])
+        SCR2.append(scr[1])
+        SCR3.append(scr[2])
+        SCR4.append(scr[3])
+        __thresh=3.00
+        if (scr[0]>=__thresh and scr[1]>=__thresh and scr[2]>=__thresh and scr[3]>=__thresh ):
+            LOG_INFO('Sizes:{}->{},{}->{},{}->{},{}->{}'.format(SC_IDS[0],s1,
+                                                                SC_IDS[1],s2,
+                                                                SC_IDS[2],s3,
+                                                                SC_IDS[3],s4))
+            break
+    
+    data = {'size_{}'.format(SC_IDS[0]):S1s, 
+            'scr_{}'.format(SC_IDS[0]):SCR1,
+            'size_{}'.format(SC_IDS[1]):S2s, 
+            'scr_{}'.format(SC_IDS[1]):SCR2,
+            'size_{}'.format(SC_IDS[2]):S3s, 
+            'scr_{}'.format(SC_IDS[2]):SCR3,
+            'size_{}'.format(SC_IDS[3]):S4s, 
+            'scr_{}'.format(SC_IDS[3]):SCR4}
+    # Create DataFrame 
+    df = pd.DataFrame(data)
+    _csv_path=os.path.join(os.getcwd(),'SCR.csv')
+    df.to_csv(_csv_path)
+    
+
 
 def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     '''
@@ -101,13 +197,13 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     v_kv=[]
     v_pu=[]
     # non-verbose execution
-    LOG_INFO('Solving for full newton-rafsan ')
+    #LOG_INFO('Solving for full newton-rafsan ')
     with silence():
         # full newton-rafsan
         psspy.fnsl(options4=1,
                    options5=1,
                    options6=1)
-    LOG_INFO('Getting IECS values')
+    #LOG_INFO('Getting IECS values')
     with silence():
         # get symmetric 3-phase fault currents
         all_currents=pssarrays.iecs_currents(all=1,
@@ -131,7 +227,7 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     total_bus=len(pmax)
     scr=[]
     _UNIT_FACTOR=1e-3
-    LOG_INFO('Calculating SCR')
+    #LOG_INFO('Calculating SCR')
     for idx in range(total_bus):
         scr.append(math.sqrt(3)*i_sym[idx]*v_pu[idx]*v_kv[idx]*_UNIT_FACTOR/pmax[idx])
     
@@ -146,6 +242,6 @@ if __name__=='__main__':
     start_time=time()
     banner()
     initCase()
-    pmax,i_sym,v_kv,v_pu,scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS,ret_params=True)
-    __summary(BUS_IDS,MACHINE_IDS,pmax,i_sym,v_kv,v_pu,scr,save_csv=True)
+    modifyCase4()
+    #__summary(BUS_IDS,MACHINE_IDS,pmax,i_sym,v_kv,v_pu,scr,save_csv=True)
     LOG_INFO('Time Taken:{}'.format(time()-start_time),pcolor='cyan')
