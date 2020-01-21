@@ -12,6 +12,7 @@ import os
 import numpy as np
 import pandas as pd
 import math
+import random
 import json
 import itertools
 import matplotlib.pyplot as plt
@@ -71,10 +72,6 @@ STEP_SIZE   =   config_data['STEP_SIZE']
 THRESH      =   config_data['THRESH']
 POP_SIZE    =   config_data['POP_SIZE']
 MAX_ITER    =   config_data['MAX_ITER']
-
-INITIAL_SIZES=str(config_data['INITIAL_SIZES']).split(',')
-INITIAL_SIZES=[int(_size) for _size in INITIAL_SIZES ]
-INITIAL_SIZES=np.asarray(INITIAL_SIZES)
 #-----------------------------------------------------------------------------------------------------------
 def initCase():
     LOG_INFO('Initializing psspy')
@@ -103,42 +100,27 @@ def __summary(hv_bus_ids,gen_bus_ids,pmax,i_sym,v_kv,v_pu,scr,save_csv=True):
         _csv_path=os.path.join(os.getcwd(),'summary.csv')
         df.to_csv(_csv_path)
         LOG_INFO('Saved Summary at: {}'.format(_csv_path))
-#-----------------------------------------------------------------------------------------------------------
-def modifyCaseBySize(sizes):
-    for idx in range(len(SC_IDS)):
-        with silence():
-            psspy.machine_data_2(i=SC_IDS[idx],
-                                 id='1',
-                                 intgar=[1,0,0,0,0,0],
-                                 realar=[0,0,500,-200,0,0,sizes[idx],0,0.09,0,0,1,1,1,1,1,1])
-#-----------------------------------------------------------------------------------------------------------
-OPTIM_SIZE=None
-def checkOptim(sc,scr,TOTAL_MIN):
-    global OPTIM_SIZE
-    if (all(val > THRESH for val in scr) and sum(list(sc))<TOTAL_MIN):
-        TOTAL_MIN =sum(list(sc))
-        OPTIM_SIZE=np.asarray(sc)
-    return TOTAL_MIN
 
-def optimMan():
-    __sizes=range(SC_SIZE_MIN,SC_SIZE_MAX+STEP_SIZE,STEP_SIZE)
-    _list_sizes=[__sizes for _ in range(len(SC_IDS))]
-    combs=list(itertools.product(*_list_sizes))
-    size_vals=[]
-    scr_vals=[]
-    LOG_INFO('Calculating Initial Inclusive Sizes')
-    TOTAL_MIN   =   SC_SIZE_MAX*len(SC_IDS)
-    for sc in tqdm(combs):
-        modifyCaseBySize(sc)
-        scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
-        size_vals.append(list(sc))
-        scr_vals.append(scr)
-        TOTAL_MIN=checkOptim(sc,scr,TOTAL_MIN)
-    
-def sizeSummary():
+def sizeSummary(sizes):
     LOG_INFO('Sizes for Sync. Condensors',pcolor='yellow')
     for idx in range(len(SC_IDS)):
-        print(colored('Sync. Cond. No.: {}        Size:  {}'.format(SC_IDS[idx],OPTIM_SIZE[idx]),color='yellow'))
+        print(colored('Sync. Cond. No.: {}        Size:  {}'.format(SC_IDS[idx],sizes[idx]),color='yellow'))
+#-----------------------------------------------------------------------------------------------------------
+def modifyCaseBySize(sizes):
+    try:
+        for idx in range(len(SC_IDS)):
+            with silence():
+                psspy.machine_data_2(i=SC_IDS[idx],
+                                    id='1',
+                                    intgar=[1,0,0,0,0,0],
+                                    realar=[0,0,500,-200,0,0,sizes[idx],0,0.17,0,0,1,1,1,1,1,1])
+    except OSError as err:
+        print("OS error: {0}".format(err))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
 #-----------------------------------------------------------------------------------------------------------
 def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     '''
@@ -197,72 +179,140 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
         return scr
     
 #-----------------------------------------------------------------------------------------------------------
-# ---
-def fitness_function(X):
-    Y=[]
-    for x in X:
-        modifyCaseBySize(x)
+def initPop():
+    __sizes=range(SC_SIZE_MIN,SC_SIZE_MAX+STEP_SIZE,STEP_SIZE)
+    random.shuffle(__sizes)
+    _list_sizes=[__sizes for _ in range(len(SC_IDS))]
+    combs=list(itertools.product(*_list_sizes))
+    X=[]
+    LOG_INFO('Initializing Population')
+    for sc in tqdm(combs):
+        modifyCaseBySize(sc)
         scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
         if all(val > THRESH for val in scr):
-            y=np.sum(x)
-        else:
-            y=len(SC_IDS)*SC_SIZE_MAX
-
-        Y.append(y)
-    return np.asarray(Y)
+            X.append(sc)
+        if len(X)==POP_SIZE:
+            break 
+    X=np.vstack(X)
+    print()
+    return X
 # ---
-def mutate(parents):
-    n=len(parents)
-    scores=fitness_function(parents)
-    #idx=scores < len(SC_IDS)*SC_SIZE_MAX
-    idx=scores > 0
-    scores=scores[idx]
-    parents=np.array(parents)[idx]
-    children=parents[np.random.choice(parents.shape[0],size=n,p=scores.astype('float32')/np.sum(scores))]
-    children=children+np.random.randint(low=-STEP_SIZE,high=STEP_SIZE,size=children.shape)
-    return children
+def fitness_function(X):
+    try:
+        Y=[]
+        for x in X:
+            modifyCaseBySize(x)
+            scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
+            if all(val > THRESH for val in scr):
+                y=np.sum(x)
+            else:
+                y=len(SC_IDS)*SC_SIZE_MAX
+
+            Y.append(y)
+        return np.asarray(Y)
+    except OSError as err:
+        print("OS error: {0}".format(err))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+# ---
+def mutate(parents,score_thresh):
+    try:
+        n=len(parents)
+        scores=fitness_function(parents)
+        idx=scores < score_thresh
+        #idx=scores > 0
+        scores=scores[idx]
+        parents=np.array(parents)[idx]
+        children=parents[np.random.choice(parents.shape[0],size=n,p=scores.astype('float32')/np.sum(scores))]
+        children=children+np.random.randint(low=-STEP_SIZE,high=STEP_SIZE,size=children.shape)
+        return children
+    except OSError as err:
+        print("OS error: {0}".format(err))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
 # ---
 def get_fitest_parents(parents):
-    _fitness=fitness_function(parents)
-    PFitness=list(zip(parents,_fitness))
-    PFitness.sort(key= lambda x:x[1]) # sort based on fitness
-    best_parent,best_fitness=PFitness[0]
-    return best_parent,best_fitness
+    try:
+        _fitness=fitness_function(parents)
+        PFitness=list(zip(parents,_fitness))
+        PFitness.sort(key= lambda x:x[1]) # sort based on fitness
+        best_parent,best_fitness=PFitness[0]
+        return best_parent,best_fitness
+    except OSError as err:
+        print("OS error: {0}".format(err))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
 # ---    
 def GA(parents,max_iter):
     LOG_INFO('Running Iterations')
-    global OPTIM_SIZE
-    best_parent,best_fitness=get_fitest_parents(parents)
-    PARENTS=[best_parent]
-    FITNESS=[best_fitness]
-    for i in tqdm(range(1,max_iter)):
-        parents=mutate(parents)
-        curr_parent,curr_fitness=get_fitest_parents(parents)
-        if curr_fitness < best_fitness:
-            best_fitness = curr_fitness
-            best_parent  = curr_parent
-        PARENTS.append(best_parent)
-        FITNESS.append(best_fitness)
-    OPTIM_SIZE=best_parent
-    return PARENTS,FITNESS
+    score_thresh=len(SC_IDS)*SC_SIZE_MAX
+    curr_parent,curr_fitness=get_fitest_parents(parents)
+    best_parent,best_fitness=curr_parent,curr_fitness
+    i=0
+    print(colored('gen:{}'.format(i),color='yellow'),'|',
+          colored('best_parent:{}'.format(best_parent),color='green'),'|',
+          colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
+          colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
+          colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
+    try:
+        for i in range(1,max_iter):
+            parents=mutate(parents,score_thresh)
+            curr_parent,curr_fitness=get_fitest_parents(parents)
+            if  curr_fitness < best_fitness:
+                best_fitness = curr_fitness
+                best_parent  = curr_parent
+            score_thresh=best_fitness+len(SC_IDS)*STEP_SIZE
+            if i % 10 ==0:
+                print(colored('gen:{}'.format(i),color='yellow'),'|',
+                    colored('best_parent:{}'.format(best_parent),color='green'),'|',
+                    colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
+                    colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
+                    colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
+    except OSError as err:
+        print("OS error: {0}".format(err))
+    except ValueError:
+        print("Could not convert data to an integer.")
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        raise
+       
+    return best_parent
     
 #-----------------------------------------------------------------------------------------------------------
-def main():
-    LOG_INFO('Initializing Population')
-    X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(POP_SIZE-1,len(SC_IDS)))
-    X=np.vstack((X,INITIAL_SIZES))
-    sizes,totals=GA(X,MAX_ITER)
-    sizeSummary()
+def saveOptimizationHistory(sizes,totals):
     col_names=['Size_{}'.format(SC_IDS[i]) for i in range(len(SC_IDS))]
     col_names+=['Total Size']
     SIZES=np.vstack(sizes)
     TOTALS=np.vstack(totals)
     DATA=np.concatenate((SIZES,TOTALS),axis=1)   
     df = pd.DataFrame(data=DATA,columns=col_names)
+    df.index.name = 'iterations'
     _csv_path=os.path.join(os.getcwd(),'history.csv')
     df.to_csv(_csv_path)
     df.plot()
-    plt.show()
+    plt.savefig(os.path.join(os.getcwd(),'src_img','history.png'),dpi=500)
+
+def saveSummary(optim_size):
+    modifyCaseBySize(optim_size)
+    pmax,i_sym,v_kv,v_pu,scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS,ret_params=True)
+    __summary(BUS_IDS,MACHINE_IDS,pmax,i_sym,v_kv,v_pu,scr,save_csv=True)
+
+def main():
+    #X=initPop()
+    X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(POP_SIZE,len(SC_IDS)))
+    optim_size=GA(X,MAX_ITER)
+    sizeSummary(optim_size)
+    saveSummary(optim_size)
+    
 #-----------------------------------------------------------------------------------------------------------
 if __name__=='__main__':
     start_time=time()

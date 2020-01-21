@@ -3,11 +3,11 @@
     "BUS_IDS"       :"14,15,16,20",
     "GEN_IDS"       :"30,36,32,34",
     "SC_IDS"        :"37,38,39,40",
-    "SC_SIZE_MIN"   : 10,
-    "SC_SIZE_MAX"   : 50,
+    "SC_SIZE_MIN"   : 5,
+    "SC_SIZE_MAX"   : 100,
     "STEP_SIZE"     : 5,
-    "THRESH"        : 3.00,
+    "THRESH"        : 3,
     "POP_SIZE"      : 10,
-    "MAX_ITER"      : 10,
-    "INITIAL_SIZES" : "50,10,15,45"
+    "MAX_ITER"      : 500
+    
 }
