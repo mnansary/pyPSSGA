@@ -6,5 +6,8 @@
     "SC_SIZE_MIN"   : 10,
     "SC_SIZE_MAX"   : 50,
     "STEP_SIZE"     : 5,
-    "THRESH"        : 3.00
+    "THRESH"        : 3.00,
+    "POP_SIZE"      : 10,
+    "MAX_ITER"      : 10,
+    "INITIAL_SIZES" : "50,10,15,45"
 }
