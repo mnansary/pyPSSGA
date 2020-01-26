@@ -8,6 +8,16 @@
     "STEP_SIZE"     : 5,
     "THRESH"        : 3,
     "POP_SIZE"      : 10,
-    "MAX_ITER"      : 500
-    
+    "MAX_ITER"      : 500,
+    "FIXED_COST"    : 1000000,
+    "VARIABLE_COST" : 30000,
+    "SERVICE_COST"  : 800,
+    "FUEL_COST"     : 100, 
+    "MWH_COST"      : 100,
+    "PWR_LOSS_PERC" : 3,
+    "ON_TIME_PERC"  : 100,
+    "CURTAIL_PERC"  : 1,
+    "DISSCOUNT_PERC": 7,
+    "NUM_OF_YEARS"  : 20,
+    "PWR_GEN_FACTOR": 0.8
 }

@@ -2,7 +2,7 @@
 Power System Simulation with PSSE
 
         Author:MD. Nazmuddoha Ansary, Sajjad Uddin Mahmud
-        version:0.0.2
+        version:0.0.3
 
 # Environment
 
@@ -50,14 +50,27 @@ Power System Simulation with PSSE
 * example *config.json*:
 
         {
-                "CASE_PATH"     :"F:\\PSSE\\code\\pyPSSGA\\base_case_final.sav",
-                "BUS_IDS"       :"14,15,16,20",
-                "GEN_IDS"       :"30,36,32,34",
-                "SC_IDS"        :"37,38,39,40",
-                "SC_SIZE_MIN"   : 10,
-                "SC_SIZE_MAX"   : 50,
-                "STEP_SIZE"     : 5,
-                "THRESH"        : 3.00
+            "CASE_PATH"     :"F:\\PSSE\\code\\pyPSSGA\\base_case_final.sav",
+            "BUS_IDS"       :"14,15,16,20",
+            "GEN_IDS"       :"30,36,32,34",
+            "SC_IDS"        :"37,38,39,40",
+            "SC_SIZE_MIN"   : 5,
+            "SC_SIZE_MAX"   : 100,
+            "STEP_SIZE"     : 5,
+            "THRESH"        : 3,
+            "POP_SIZE"      : 10,
+            "MAX_ITER"      : 500,
+            "FIXED_COST"    : 1000000,
+            "VARIABLE_COST" : 30000,
+            "SERVICE_COST"  : 800,
+            "FUEL_COST"     : 100, 
+            "MWH_COST"      : 100,
+            "PWR_LOSS_PERC" : 3,
+            "ON_TIME_PERC"  : 100,
+            "CURTAIL_PERC"  : 1,
+            "DISSCOUNT_PERC": 7,
+            "NUM_OF_YEARS"  : 20,
+            "PWR_GEN_FACTOR": 0.8
         }
 
 * execute: ``` optimize.py```
@@ -66,6 +79,70 @@ Power System Simulation with PSSE
 * Example Execution results
 
 ![](/src_img/exec.PNG?raw=true)
+
+# Summary
+
+
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>GEN BUS</th>
+      <th>HV BUS</th>
+      <th>I"(A)</th>
+      <th>Pmax (MW)</th>
+      <th>Voltage (kv)</th>
+      <th>p.u(V)</th>
+      <th>SCR</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>30</td>
+      <td>14</td>
+      <td>5293.925781</td>
+      <td>1050.000000</td>
+      <td>345.0</td>
+      <td>0.997127</td>
+      <td>3.004129</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>36</td>
+      <td>15</td>
+      <td>3647.460205</td>
+      <td>720.000000</td>
+      <td>345.0</td>
+      <td>0.995584</td>
+      <td>3.013810</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>32</td>
+      <td>16</td>
+      <td>4836.240723</td>
+      <td>960.000061</td>
+      <td>345.0</td>
+      <td>0.997276</td>
+      <td>3.002145</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>34</td>
+      <td>20</td>
+      <td>4287.865234</td>
+      <td>839.999939</td>
+      <td>345.0</td>
+      <td>0.984831</td>
+      <td>3.004023</td>
+    </tr>
+  </tbody>
+</table>
+
+# History
+
+![](/src_img/history.png?raw=true)
 
 # Case Diagram
 

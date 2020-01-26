@@ -72,16 +72,32 @@ STEP_SIZE   =   config_data['STEP_SIZE']
 THRESH      =   config_data['THRESH']
 POP_SIZE    =   config_data['POP_SIZE']
 MAX_ITER    =   config_data['MAX_ITER']
+# NPV params
+C_f         =   config_data['FIXED_COST']
+C_v         =   config_data['VARIABLE_COST']
+C_m         =   config_data['SERVICE_COST']
+C_MWh       =   config_data['MWH_COST']
+C_fuel      =   config_data['FUEL_COST']
+P_loss      =   config_data['PWR_LOSS_PERC']/100.0
+Tsc         =   config_data['ON_TIME_PERC']/100.0
+alpha       =   config_data['CURTAIL_PERC']/100.0
+r           =   config_data['DISSCOUNT_PERC']/100.0
+N_years     =   config_data['NUM_OF_YEARS']
+P_gen       =   config_data['PWR_GEN_FACTOR']
 #-----------------------------------------------------------------------------------------------------------
-def initCase():
-    LOG_INFO('Initializing psspy')
+def getGeneratedPower():
     with silence():
         # initialize
-        psspy.psseinit(8000)
-    LOG_INFO('Loading Case ')
-    with silence():
+        psspy.psseinit()
         # load case
         psspy.case(CASE_STUDY)
+    PWR_GEN=[]
+    for _id in MACHINE_IDS:
+            _, _pmax = psspy.macdat(ibus=_id, id='1', string='PMAX') # find power of machine
+            Pgen    =   P_gen*_pmax
+            PWR_GEN.append(Pgen)
+    return PWR_GEN
+PWR_GEN     =   getGeneratedPower()
 #-----------------------------------------------------------------------------------------------------------
 def __summary(hv_bus_ids,gen_bus_ids,pmax,i_sym,v_kv,v_pu,scr,save_csv=True):
     # intialise data of lists. 
@@ -99,34 +115,19 @@ def __summary(hv_bus_ids,gen_bus_ids,pmax,i_sym,v_kv,v_pu,scr,save_csv=True):
     if save_csv:
         _csv_path=os.path.join(os.getcwd(),'summary.csv')
         df.to_csv(_csv_path)
+        df.to_html('summary.html')
         LOG_INFO('Saved Summary at: {}'.format(_csv_path))
 
 def sizeSummary(sizes):
     LOG_INFO('Sizes for Sync. Condensors',pcolor='yellow')
     for idx in range(len(SC_IDS)):
         print(colored('Sync. Cond. No.: {}        Size:  {}'.format(SC_IDS[idx],sizes[idx]),color='yellow'))
+
 #-----------------------------------------------------------------------------------------------------------
-def modifyCaseBySize(sizes):
-    try:
-        for idx in range(len(SC_IDS)):
-            with silence():
-                psspy.machine_data_2(i=SC_IDS[idx],
-                                    id='1',
-                                    intgar=[1,0,0,0,0,0],
-                                    realar=[0,0,500,-200,0,0,sizes[idx],0,0.17,0,0,1,1,1,1,1,1])
-    except OSError as err:
-        print("OS error: {0}".format(err))
-    except ValueError:
-        print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-#-----------------------------------------------------------------------------------------------------------
-def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
+def calcSCR(sizes,ret_params=False):
     '''
     ARGS: 
-        hv_bus_ids  : list of relevant high voltage buses <LIST OF INT>
-        gen_bus_ids : list of relevant generator buses <LIST OF INT>
+        sizes       : list of sizes of Sync. Conds  
    RETURNS:
         scr         : list of short circuit ratios
     Calculation:
@@ -139,14 +140,16 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     v_kv=[]
     v_pu=[]
     # non-verbose execution
-    #LOG_INFO('Solving for full newton-rafsan ')
     with silence():
+        for idx in range(len(SC_IDS)):
+            psspy.machine_data_2(i=SC_IDS[idx],
+                                id='1',
+                                intgar=[1,0,0,0,0,0],
+                                realar=[0,0,500,-200,0,0,sizes[idx],0,0.17,0,0,1,1,1,1,1,1])
         # full newton-rafsan
         psspy.fnsl(options4=1,
                    options5=1,
                    options6=1)
-    #LOG_INFO('Getting IECS values')
-    with silence():
         # get symmetric 3-phase fault currents
         all_currents=pssarrays.iecs_currents(all=1,
                                             flt3ph=1,
@@ -157,11 +160,11 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     # all bus kv voltage
     _, (__v_kv,) = psspy.abusreal(sid=-1, string=["BASE"])
     # get pmax
-    for _id in gen_bus_ids:
+    for _id in MACHINE_IDS:
         _, _pmax = psspy.macdat(ibus=_id, id='1', string='PMAX') # find power of machine
         pmax.append(_pmax)
     # get v_pu,v_kv,i_sym
-    for _id in hv_bus_ids:
+    for _id in BUS_IDS:
         v_pu.append(__v_pu[_id-1])
         v_kv.append(__v_kv[_id-1])
         i_sym.append(all_currents.flt3ph[_id-1].ibsym.real)
@@ -180,136 +183,128 @@ def calcSCR(hv_bus_ids,gen_bus_ids,ret_params=False):
     
 #-----------------------------------------------------------------------------------------------------------
 def initPop():
-    __sizes=range(SC_SIZE_MIN,SC_SIZE_MAX+STEP_SIZE,STEP_SIZE)
-    random.shuffle(__sizes)
-    _list_sizes=[__sizes for _ in range(len(SC_IDS))]
-    combs=list(itertools.product(*_list_sizes))
+    pop=0
     X=[]
-    LOG_INFO('Initializing Population')
-    for sc in tqdm(combs):
-        modifyCaseBySize(sc)
-        scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
-        if all(val > THRESH for val in scr):
-            X.append(sc)
-        if len(X)==POP_SIZE:
-            break 
-    X=np.vstack(X)
-    print()
+    LOG_INFO('Initializing population')
+    while (pop<POP_SIZE):
+        _X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(500,len(SC_IDS)))
+        for x in tqdm(_X):
+            if pop==POP_SIZE:
+                break
+            if check_constraint(x):
+                X.append(x)
+                pop+=1
+    X=np.asarray(X)
     return X
+    
+   
+# ---
+def check_constraint(x):
+    scr=calcSCR(x)
+    if all(val > THRESH for val in scr):
+        return True
+    else:
+        return False
+
 # ---
 def fitness_function(X):
-    try:
-        Y=[]
-        for x in X:
-            modifyCaseBySize(x)
-            scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS)
-            if all(val > THRESH for val in scr):
-                y=np.sum(x)
-            else:
-                y=len(SC_IDS)*SC_SIZE_MAX
-
-            Y.append(y)
-        return np.asarray(Y)
-    except OSError as err:
-        print("OS error: {0}".format(err))
-    except ValueError:
-        print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
+    NPV=[]
+    for x in X:
+        C0      =   0
+        Cmain   =   0
+        Celec   =   0
+        # calculate C0,Cmain,Celec
+        for idx in range(len(x)):
+            C0      +=  C_f+C_v*x[idx]
+            Cmain   +=  C_m*x[idx]
+            Celec   +=  365*24*Tsc*C_MWh*P_loss*x[idx]
+        # per year Cost
+        C=Celec+Cmain
+        # revenue
+        R=0
+        for Pgen in PWR_GEN:
+            R       +=  365*24*alpha*Pgen*(C_MWh+C_fuel)
+        # NPV
+        npv=0
+        for i in range(1,N_years+1):
+            #NPV    +=  ((math.pow(R,i)-math.pow(C,i))/(math.pow((1+r),i)))-C0
+            npv     +=  ((R-C)/(math.pow((1+r),i)))-C0
+        NPV.append(math.ceil(npv/C_f))
+    return np.asarray(NPV)
 # ---
-def mutate(parents,score_thresh):
-    try:
-        n=len(parents)
-        scores=fitness_function(parents)
-        idx=scores < score_thresh
-        #idx=scores > 0
-        scores=scores[idx]
-        parents=np.array(parents)[idx]
-        children=parents[np.random.choice(parents.shape[0],size=n,p=scores.astype('float32')/np.sum(scores))]
+def mutate(parents):
+    fit_children=[]
+    scores=fitness_function(parents)
+    parents=np.array(parents)
+    children=parents[np.random.choice(parents.shape[0],size=len(parents),p=scores.astype('float32')/np.sum(scores))]
+    while (len(fit_children) < len(parents)):
         children=children+np.random.randint(low=-STEP_SIZE,high=STEP_SIZE,size=children.shape)
-        return children
-    except OSError as err:
-        print("OS error: {0}".format(err))
-    except ValueError:
-        print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
+        for x in children:
+            x[x<=0]=STEP_SIZE
+            if len(fit_children)==len(parents):
+                break
+            if check_constraint(x):
+                fit_children.append(x)
+    fit_children=np.asarray(fit_children)
+    return fit_children
+            
 # ---
 def get_fitest_parents(parents):
-    try:
-        _fitness=fitness_function(parents)
-        PFitness=list(zip(parents,_fitness))
-        PFitness.sort(key= lambda x:x[1]) # sort based on fitness
-        best_parent,best_fitness=PFitness[0]
-        return best_parent,best_fitness
-    except OSError as err:
-        print("OS error: {0}".format(err))
-    except ValueError:
-        print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
+    _fitness=fitness_function(parents)
+    PFitness=list(zip(parents,_fitness))
+    PFitness.sort(key= lambda x:x[1],reverse=True) # sort based on fitness
+    best_parent,best_fitness=PFitness[0]
+    return best_parent,best_fitness
 # ---    
-def GA(parents,max_iter):
+def GA(parents,max_iter,verbose=False):
     LOG_INFO('Running Iterations')
-    score_thresh=len(SC_IDS)*SC_SIZE_MAX
     curr_parent,curr_fitness=get_fitest_parents(parents)
     best_parent,best_fitness=curr_parent,curr_fitness
     i=0
-    print(colored('gen:{}'.format(i),color='yellow'),'|',
-          colored('best_parent:{}'.format(best_parent),color='green'),'|',
-          colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
-          colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
-          colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
-    try:
-        for i in range(1,max_iter):
-            parents=mutate(parents,score_thresh)
-            curr_parent,curr_fitness=get_fitest_parents(parents)
-            if  curr_fitness < best_fitness:
-                best_fitness = curr_fitness
-                best_parent  = curr_parent
-            score_thresh=best_fitness+len(SC_IDS)*STEP_SIZE
-            if i % 10 ==0:
-                print(colored('gen:{}'.format(i),color='yellow'),'|',
-                    colored('best_parent:{}'.format(best_parent),color='green'),'|',
-                    colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
-                    colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
-                    colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
-    except OSError as err:
-        print("OS error: {0}".format(err))
-    except ValueError:
-        print("Could not convert data to an integer.")
-    except:
-        print("Unexpected error:", sys.exc_info()[0])
-        raise
-       
-    return best_parent
+    par=[]
+    if verbose:
+        print(colored('gen:{}'.format(i),color='yellow'),'|',
+            colored('best_parent:{}'.format(best_parent),color='green'),'|',
+            colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
+            colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
+            colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
+    for i in tqdm(range(1,max_iter)):
+        
+        parents=mutate(parents)
+        curr_parent,curr_fitness=get_fitest_parents(parents)
+        if  curr_fitness > best_fitness:
+            best_fitness = curr_fitness
+            best_parent  = curr_parent
+        if i % 10 ==0 and verbose:
+            print(colored('gen:{}'.format(i),color='yellow'),'|',
+                colored('best_parent:{}'.format(best_parent),color='green'),'|',
+                colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
+                colored('curr_parent:{}'.format(curr_parent),color='red'),'|',
+                colored('curr_fitness:{}'.format(curr_fitness),color='red'))
+        par.append(best_parent)
+        
+    return best_parent,par
     
 #-----------------------------------------------------------------------------------------------------------
-def saveOptimizationHistory(sizes,totals):
+def saveOptimizationHistory(sizes):
     col_names=['Size_{}'.format(SC_IDS[i]) for i in range(len(SC_IDS))]
-    col_names+=['Total Size']
     SIZES=np.vstack(sizes)
-    TOTALS=np.vstack(totals)
-    DATA=np.concatenate((SIZES,TOTALS),axis=1)   
-    df = pd.DataFrame(data=DATA,columns=col_names)
+    df = pd.DataFrame(data=SIZES,columns=col_names)
     df.index.name = 'iterations'
-    _csv_path=os.path.join(os.getcwd(),'history.csv')
+    _csv_path=os.path.join(os.getcwd(),'history_sizes.csv')
     df.to_csv(_csv_path)
     df.plot()
     plt.savefig(os.path.join(os.getcwd(),'src_img','history.png'),dpi=500)
 
+
 def saveSummary(optim_size):
-    modifyCaseBySize(optim_size)
-    pmax,i_sym,v_kv,v_pu,scr=calcSCR(hv_bus_ids=BUS_IDS,gen_bus_ids=MACHINE_IDS,ret_params=True)
+    pmax,i_sym,v_kv,v_pu,scr=calcSCR(optim_size,ret_params=True)
     __summary(BUS_IDS,MACHINE_IDS,pmax,i_sym,v_kv,v_pu,scr,save_csv=True)
 
 def main():
-    #X=initPop()
-    X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(POP_SIZE,len(SC_IDS)))
-    optim_size=GA(X,MAX_ITER)
+    X=initPop()
+    optim_size,sizes=GA(X,MAX_ITER)
+    saveOptimizationHistory(sizes)
     sizeSummary(optim_size)
     saveSummary(optim_size)
     
@@ -317,6 +312,5 @@ def main():
 if __name__=='__main__':
     start_time=time()
     banner()
-    initCase()
     main()
     LOG_INFO('Time Taken:{} sec'.format(time()-start_time),pcolor='cyan')
