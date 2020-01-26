@@ -7,7 +7,7 @@
     "SC_SIZE_MAX"   : 100,
     "STEP_SIZE"     : 5,
     "THRESH"        : 3,
-    "POP_SIZE"      : 10,
+    "POP_SIZE"      : 25,
     "MAX_ITER"      : 500,
     "FIXED_COST"    : 1000000,
     "VARIABLE_COST" : 30000,

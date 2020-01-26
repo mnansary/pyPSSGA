@@ -187,7 +187,7 @@ def initPop():
     X=[]
     LOG_INFO('Initializing population')
     while (pop<POP_SIZE):
-        _X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(500,len(SC_IDS)))
+        _X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(MAX_ITER,len(SC_IDS)))
         for x in tqdm(_X):
             if pop==POP_SIZE:
                 break
@@ -229,7 +229,7 @@ def fitness_function(X):
         for i in range(1,N_years+1):
             #NPV    +=  ((math.pow(R,i)-math.pow(C,i))/(math.pow((1+r),i)))-C0
             npv     +=  ((R-C)/(math.pow((1+r),i)))-C0
-        NPV.append(math.ceil(npv/C_f))
+        NPV.append(math.ceil(npv))
     return np.asarray(NPV)
 # ---
 def mutate(parents):
@@ -262,6 +262,9 @@ def GA(parents,max_iter,verbose=False):
     best_parent,best_fitness=curr_parent,curr_fitness
     i=0
     par=[]
+    fit=[]
+    par.append(best_parent)
+    fit.append(best_fitness)
     if verbose:
         print(colored('gen:{}'.format(i),color='yellow'),'|',
             colored('best_parent:{}'.format(best_parent),color='green'),'|',
@@ -282,19 +285,35 @@ def GA(parents,max_iter,verbose=False):
                 colored('curr_parent:{}'.format(curr_parent),color='red'),'|',
                 colored('curr_fitness:{}'.format(curr_fitness),color='red'))
         par.append(best_parent)
-        
-    return best_parent,par
+        fit.append(best_fitness)
+    return best_parent,par,fit
     
 #-----------------------------------------------------------------------------------------------------------
-def saveOptimizationHistory(sizes):
-    col_names=['Size_{}'.format(SC_IDS[i]) for i in range(len(SC_IDS))]
+def saveOptimizationHistory(sizes,npvs):
+    col_names=['Size_{}(MVA)'.format(SC_IDS[i]) for i in range(len(SC_IDS))]
+    col_names+=['SCR_{}'.format(MACHINE_IDS[i]) for i in range(len(MACHINE_IDS))]
+    col_names+=['Total Size(MVA)','NPV(in millions)']
     SIZES=np.vstack(sizes)
-    df = pd.DataFrame(data=SIZES,columns=col_names)
+    NPVS=np.vstack(np.asarray(npvs)/C_f)
+    SCRS=[]
+    LOG_INFO('Saving History')
+    for x in tqdm(sizes):
+        SCRS.append(calcSCR(x))
+    SCRS=np.vstack(SCRS)
+    TOTALS=np.vstack(np.sum(SIZES,axis=1))
+    DATA=np.concatenate((SIZES,SCRS,TOTALS,NPVS),axis=1)
+    df = pd.DataFrame(data=DATA,columns=col_names)
     df.index.name = 'iterations'
-    _csv_path=os.path.join(os.getcwd(),'history_sizes.csv')
+    _csv_path=os.path.join(os.getcwd(),'history.csv')
     df.to_csv(_csv_path)
-    df.plot()
-    plt.savefig(os.path.join(os.getcwd(),'src_img','history.png'),dpi=500)
+    df.to_html('history.html')
+    df[['Size_{}(MVA)'.format(SC_IDS[i]) for i in range(len(SC_IDS))]].plot()
+    plt.savefig(os.path.join(os.getcwd(),'src_img','history_sizes.png'),dpi=500)
+    df[['SCR_{}'.format(MACHINE_IDS[i]) for i in range(len(MACHINE_IDS))]].plot()
+    plt.savefig(os.path.join(os.getcwd(),'src_img','history_SCR.png'),dpi=500)
+    df[['Total Size(MVA)','NPV(in millions)']].plot()
+    plt.savefig(os.path.join(os.getcwd(),'src_img','history_NPV.png'),dpi=500)
+    
 
 
 def saveSummary(optim_size):
@@ -303,8 +322,8 @@ def saveSummary(optim_size):
 
 def main():
     X=initPop()
-    optim_size,sizes=GA(X,MAX_ITER)
-    saveOptimizationHistory(sizes)
+    optim_size,sizes,npvs=GA(X,MAX_ITER)
+    saveOptimizationHistory(sizes,npvs)
     sizeSummary(optim_size)
     saveSummary(optim_size)
     
