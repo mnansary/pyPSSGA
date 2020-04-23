@@ -84,6 +84,10 @@ alpha       =   config_data['CURTAIL_PERC']/100.0
 r           =   config_data['DISSCOUNT_PERC']/100.0
 N_years     =   config_data['NUM_OF_YEARS']
 P_gen       =   config_data['PWR_GEN_FACTOR']
+
+C_MWh=C_MWh[:N_years]
+C_fuel=C_fuel[:N_years]
+
 #-----------------------------------------------------------------------------------------------------------
 def getGeneratedPower():
     with silence():
@@ -212,23 +216,29 @@ def fitness_function(X):
     for x in X:
         C0      =   0
         Cmain   =   0
-        Celec   =   0
+        C       =   [] # cost per year
         # calculate C0,Cmain,Celec
         for idx in range(len(x)):
             C0      +=  C_f+C_v*x[idx]
             Cmain   +=  C_m*x[idx]
-            Celec   +=  365*24*Tsc*C_MWh*P_loss*x[idx]
-        # per year Cost
-        C=Celec+Cmain
+
+        for c_mwh in C_MWh:
+            Celec=0
+            for idx in range(len(x)):
+                Celec   +=  365*24*Tsc*c_mwh*P_loss*x[idx]
+            C.append(Celec+Cmain)
         # revenue
-        R=0
-        for Pgen in PWR_GEN:
-            R       +=  365*24*alpha*Pgen*(C_MWh+C_fuel)
+        R=[]
+        for c_mwh,c_fuel in zip(C_MWh,C_fuel):
+            Rev=0
+            for Pgen in PWR_GEN:
+                Rev       +=  365*24*alpha*Pgen*(c_mwh+c_fuel)
+            R.append(Rev)
+
         # NPV
         npv=0
         for i in range(1,N_years+1):
-            #NPV    +=  ((math.pow(R,i)-math.pow(C,i))/(math.pow((1+r),i)))-C0
-            npv     +=  ((R-C)/(math.pow((1+r),i)))-C0
+            npv     +=  ((R[i-1]-C[i-1])/(math.pow((1+r),i)))-C0
         NPV.append(math.ceil(npv))
     return np.asarray(NPV)
 # ---
