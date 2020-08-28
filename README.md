@@ -2,7 +2,7 @@
 Power System Simulation with PSSE
 
         Author:MD. Nazmuddoha Ansary, Sajjad Uddin Mahmud
-        version:0.0.4
+        version:0.0.5
 
 # Environment
 
@@ -49,95 +49,36 @@ Power System Simulation with PSSE
 
 * example *config.json*:
 
-        {
-            "CASE_PATH"     :"F:\\PSSE\\code\\pyPSSGA\\base_case_final.sav",
-            "BUS_IDS"       :"14,15,16,20",
-            "GEN_IDS"       :"30,36,32,34",
-            "SC_IDS"        :"37,38,39,40",
-            "SC_SIZE_MIN"   : 5,
-            "SC_SIZE_MAX"   : 100,
-            "STEP_SIZE"     : 5,
-            "THRESH"        : 3,
-            "POP_SIZE"      : 25,
-            "MAX_ITER"      : 500,
-            "FIXED_COST"    : 1000000,
-            "VARIABLE_COST" : 30000,
-            "SERVICE_COST"  : 800,
-            "FUEL_COST"     : 100, 
-            "MWH_COST"      : 100,
-            "PWR_LOSS_PERC" : 3,
-            "ON_TIME_PERC"  : 100,
-            "CURTAIL_PERC"  : 1,
-            "DISSCOUNT_PERC": 7,
-            "NUM_OF_YEARS"  : 20,
-            "PWR_GEN_FACTOR": 0.8
-        }
+      {
+          "CASE_PATH"     :"F:\\PSSE\\code\\pyPSSGA\\base_case_final.sav",
+          "BUS_IDS"       :"14,15,16,20",
+          "GEN_IDS"       :"30,36,32,34",
+          "SC_IDS"        :"37,38,39,40",
+          "SC_SIZE_MIN"   : 5,
+          "SC_SIZE_MAX"   : 100,
+          "CROSS_OVER"    : 0.8,
+          "MUTATION_RATE" : 0.1,
+          "THRESH"        : 3,
+          "POP_SIZE"      : 25,
+          "MAX_ITER"      : 500,
+          "TERM_CHECK"    : 10,
+          "FIXED_COST"    : 1500000,
+          "VARIABLE_COST" : 30000,
+          "SERVICE_COST"  : 800,
+          "FUEL_COST"     : [71.15,72.14,73.08,73.70,73.91,74.07,74.47,74.81,75.14,75.33,75.52,75.76,
+                            76.08,76.42,76.67,76.91,77.05,77.09,77.33,77.58], 
+          "MWH_COST"      : [19.57,20.18,20.18,20.14,20.27,20.27,20.28,20.33,
+                            20.33,20.33,20.33,20.72,20.72,20.72,20.72,20.72,20.72,20.98,20.98,20.98],
+          "PWR_LOSS_PERC" : 3,
+          "ON_TIME_PERC"  : 100,
+          "CURTAIL_PERC"  : 1,
+          "DISSCOUNT_PERC": 7,
+          "NUM_OF_YEARS"  : 10,
+          "PWR_GEN_FACTOR": 0.8
+      }
 
 * execute: ``` optimize.py```
 > change dir if necessary
-
-* Example Execution results
-
-![](/src_img/exec.PNG?raw=true)
-
-# Summary
-
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>GEN BUS</th>
-      <th>HV BUS</th>
-      <th>I"(A)</th>
-      <th>Pmax (MW)</th>
-      <th>Voltage (kv)</th>
-      <th>p.u(V)</th>
-      <th>SCR</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>30</td>
-      <td>14</td>
-      <td>5293.145996</td>
-      <td>1050.000000</td>
-      <td>345.0</td>
-      <td>0.997127</td>
-      <td>3.003686</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>36</td>
-      <td>15</td>
-      <td>3640.414307</td>
-      <td>720.000000</td>
-      <td>345.0</td>
-      <td>0.995584</td>
-      <td>3.007988</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>32</td>
-      <td>16</td>
-      <td>4843.773438</td>
-      <td>960.000061</td>
-      <td>345.0</td>
-      <td>0.997276</td>
-      <td>3.006821</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>34</td>
-      <td>20</td>
-      <td>4295.235352</td>
-      <td>839.999939</td>
-      <td>345.0</td>
-      <td>0.984831</td>
-      <td>3.009187</td>
-    </tr>
-  </tbody>
-</table>
 
 # History
 

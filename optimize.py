@@ -20,6 +20,7 @@ from time import time
 from tqdm import tqdm 
 import contextlib
 from termcolor import colored
+from itertools import combinations
 os.system('color')
 #-----------------------------------------------------------------------------------------------------------
 redirect.psse2py()
@@ -58,35 +59,41 @@ def banner():
 
 #-----------------------------------------------------------------------------------------------------------
 LOG_INFO('Loading System Config ')
-config_data =   readJson('config.json')
-CASE_STUDY  =   config_data['CASE_PATH']
-BUS_IDS     =   str(config_data['BUS_IDS']).split(',')
-BUS_IDS     =   [int(_id) for _id in BUS_IDS ]
-MACHINE_IDS =   str(config_data['GEN_IDS']).split(',')
-MACHINE_IDS =   [int(_id) for _id in MACHINE_IDS]
-SC_IDS      =   str(config_data['SC_IDS']).split(',')
-SC_IDS      =   [int(_id) for _id in SC_IDS]
-SC_SIZE_MIN =   config_data['SC_SIZE_MIN']
-SC_SIZE_MAX =   config_data['SC_SIZE_MAX']
-STEP_SIZE   =   config_data['STEP_SIZE']
-THRESH      =   config_data['THRESH']
-POP_SIZE    =   config_data['POP_SIZE']
-MAX_ITER    =   config_data['MAX_ITER']
+config_data     =   readJson('config.json')
+CASE_STUDY      =   config_data['CASE_PATH']
+BUS_IDS         =   str(config_data['BUS_IDS']).split(',')
+BUS_IDS         =   [int(_id) for _id in BUS_IDS ]
+MACHINE_IDS     =   str(config_data['GEN_IDS']).split(',')
+MACHINE_IDS     =   [int(_id) for _id in MACHINE_IDS]
+SC_IDS          =   str(config_data['SC_IDS']).split(',')
+SC_IDS          =   [int(_id) for _id in SC_IDS]
+SC_SIZE_MIN     =   config_data['SC_SIZE_MIN']
+SC_SIZE_MAX     =   config_data['SC_SIZE_MAX']
+CROSS_OVER      =   config_data['CROSS_OVER']
+THRESH          =   config_data['THRESH']
+POP_SIZE        =   config_data['POP_SIZE']
+MAX_ITER        =   config_data['MAX_ITER']
+MUTATION_RATE   =   config_data["MUTATION_RATE"]
+MUTATION_LIMIT  =   int(MUTATION_RATE*SC_SIZE_MAX) 
+TERM_CHECK      =   config_data["TERM_CHECK"] 
+# cross over params
+N_CROSS         =   int(CROSS_OVER*len(SC_IDS))
+CROSS_LIST      =   [i for i in range(len(SC_IDS))]
 # NPV params
-C_f         =   config_data['FIXED_COST']
-C_v         =   config_data['VARIABLE_COST']
-C_m         =   config_data['SERVICE_COST']
-C_MWh       =   config_data['MWH_COST']
-C_fuel      =   config_data['FUEL_COST']
-P_loss      =   config_data['PWR_LOSS_PERC']/100.0
-Tsc         =   config_data['ON_TIME_PERC']/100.0
-alpha       =   config_data['CURTAIL_PERC']/100.0
-r           =   config_data['DISSCOUNT_PERC']/100.0
-N_years     =   config_data['NUM_OF_YEARS']
-P_gen       =   config_data['PWR_GEN_FACTOR']
+C_f             =   config_data['FIXED_COST']
+C_v             =   config_data['VARIABLE_COST']
+C_m             =   config_data['SERVICE_COST']
+C_MWh           =   config_data['MWH_COST']
+C_fuel          =   config_data['FUEL_COST']
+P_loss          =   config_data['PWR_LOSS_PERC']/100.0
+Tsc             =   config_data['ON_TIME_PERC']/100.0
+alpha           =   config_data['CURTAIL_PERC']/100.0
+r               =   config_data['DISSCOUNT_PERC']/100.0
+N_years         =   config_data['NUM_OF_YEARS']
+P_gen           =   config_data['PWR_GEN_FACTOR']
 
-C_MWh=C_MWh[:N_years]
-C_fuel=C_fuel[:N_years]
+C_MWh           =   C_MWh[:N_years]
+C_fuel          =   C_fuel[:N_years]
 
 #-----------------------------------------------------------------------------------------------------------
 def getGeneratedPower():
@@ -103,6 +110,11 @@ def getGeneratedPower():
     return PWR_GEN
 PWR_GEN     =   getGeneratedPower()
 #-----------------------------------------------------------------------------------------------------------
+def __verboseGen(i,best_member,best_fitness):
+    print(colored('gen:{}'.format(i),color='yellow'),'|',
+        colored('best_parent:{}'.format(best_member),color='green'),'|',
+        colored('best_fitness:{}'.format(best_fitness),color='green'))
+        
 def __summary(hv_bus_ids,gen_bus_ids,pmax,i_sym,v_kv,v_pu,scr,save_csv=True):
     # intialise data of lists. 
     data = {'HV BUS':hv_bus_ids, 
@@ -191,7 +203,7 @@ def initPop():
     X=[]
     LOG_INFO('Initializing population')
     while (pop<POP_SIZE):
-        _X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(MAX_ITER,len(SC_IDS)))
+        _X=np.random.randint(low=SC_SIZE_MIN,high=SC_SIZE_MAX,size=(1000,len(SC_IDS)))
         for x in tqdm(_X):
             if pop==POP_SIZE:
                 break
@@ -242,62 +254,80 @@ def fitness_function(X):
         NPV.append(math.ceil(npv))
     return np.asarray(NPV)
 # ---
-def mutate(parents):
+def get_fitest(population):
+    population=np.array(population)
+    _fitness=fitness_function(population)
+    Fitness=list(zip(population,_fitness))
+    Fitness.sort(key= lambda x:x[1],reverse=True) # sort based on fitness
+    best_member,best_fitness=Fitness[0]
+    population,_=zip(*Fitness)
+    population=np.array(population[:POP_SIZE])
+    return population,best_member,best_fitness
+# ---
+def getChildren(s1,s2):
+    idxs=random.sample(CROSS_LIST,N_CROSS)
+    s1[idxs],s2[idxs]=s2[idxs],s1[idxs]
+    return s1,s2
+
+def corssOver(parents):
+    children=[]
+    for s1,s2 in combinations(parents, 2):
+        c1,c2=getChildren(s1,s2)
+        children.append(c1)
+        children.append(c2)
+    return children
+    
+# ---
+def mutate(children):
     fit_children=[]
-    scores=fitness_function(parents)
-    parents=np.array(parents)
-    children=parents[np.random.choice(parents.shape[0],size=len(parents),p=scores.astype('float32')/np.sum(scores))]
-    while (len(fit_children) < len(parents)):
-        children=children+np.random.randint(low=-STEP_SIZE,high=STEP_SIZE,size=children.shape)
-        for x in children:
-            x[x<=0]=STEP_SIZE
-            if len(fit_children)==len(parents):
-                break
+    children=children+np.random.randint(low=-MUTATION_LIMIT,high=MUTATION_LIMIT,size=np.array(children).shape)
+    for x in tqdm(children):
+        if all(val >=SC_SIZE_MIN and val <=SC_SIZE_MAX  for val in x):
             if check_constraint(x):
                 fit_children.append(x)
-    fit_children=np.asarray(fit_children)
     return fit_children
-            
-# ---
-def get_fitest_parents(parents):
-    _fitness=fitness_function(parents)
-    PFitness=list(zip(parents,_fitness))
-    PFitness.sort(key= lambda x:x[1],reverse=True) # sort based on fitness
-    best_parent,best_fitness=PFitness[0]
-    return best_parent,best_fitness
 # ---    
-def GA(parents,max_iter,verbose=False):
+def GA(parents,max_iter,verbose=True):
     LOG_INFO('Running Iterations')
-    curr_parent,curr_fitness=get_fitest_parents(parents)
-    best_parent,best_fitness=curr_parent,curr_fitness
+    parents,best_member,best_fitness=get_fitest(parents)
     i=0
+    not_improving=0
     par=[]
     fit=[]
-    par.append(best_parent)
+    par.append(best_member)
     fit.append(best_fitness)
     if verbose:
-        print(colored('gen:{}'.format(i),color='yellow'),'|',
-            colored('best_parent:{}'.format(best_parent),color='green'),'|',
-            colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
-            colored('curr_parent:{}'.format(curr_parent),color='blue'),'|',
-            colored('curr_fitness:{}'.format(curr_fitness),color='blue'))
-    for i in tqdm(range(1,max_iter)):
-        
-        parents=mutate(parents)
-        curr_parent,curr_fitness=get_fitest_parents(parents)
-        if  curr_fitness > best_fitness:
-            best_fitness = curr_fitness
-            best_parent  = curr_parent
-        if i % 10 ==0 and verbose:
-            print(colored('gen:{}'.format(i),color='yellow'),'|',
-                colored('best_parent:{}'.format(best_parent),color='green'),'|',
-                colored('best_fitness:{}'.format(best_fitness),color='green'),'|',
-                colored('curr_parent:{}'.format(curr_parent),color='red'),'|',
-                colored('curr_fitness:{}'.format(curr_fitness),color='red'))
-        par.append(best_parent)
-        fit.append(best_fitness)
-    return best_parent,par,fit
-    
+        __verboseGen(i,best_member,best_fitness)
+
+    for i in range(1,max_iter):
+        children=corssOver(parents)
+        children=mutate(children)
+        if not children:
+            LOG_INFO('TERMINATION CONDITION REACHED(NO FIT CHILDREN)',pcolor='red')
+            break
+        else:
+            parents,curr_best_member,curr_best_fitness=get_fitest(children)
+            if  curr_best_fitness > best_fitness:
+                if not_improving !=0:
+                    not_improving=0
+                best_fitness = curr_best_fitness
+                best_member  = curr_best_member
+            else:
+                not_improving+=1
+                if verbose:
+                    LOG_INFO('best fitness has not increased for {} iterations'.format(not_improving),pcolor='red')
+                if not_improving==TERM_CHECK:
+                    LOG_INFO('TERMINATION CONDITION REACHED(NPV CONVERGENCE WITHIN 10 ITERATIONS)',pcolor='red')
+                    break
+            if verbose:
+                __verboseGen(i,best_member,best_fitness)
+            par.append(best_member)
+            fit.append(best_fitness)
+            
+    return best_member,par,fit
+
+
+
 #-----------------------------------------------------------------------------------------------------------
 def saveOptimizationHistory(sizes,npvs):
     col_names=['Size_{}(MVA)'.format(SC_IDS[i]) for i in range(len(SC_IDS))]
